@@ -12,6 +12,7 @@ class Citable:
         
         if not os.path.isdir('./data'):
             os.mkdir('./data')
+        self.download()
     
     def download(self):
         r = requests.get(self.url)
