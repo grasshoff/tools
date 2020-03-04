@@ -5,9 +5,11 @@ from bokeh.plotting import figure, output_file, show
 from bokeh.io import output_notebook, output_file, save
 output_notebook()
 from bokeh.models import HoverTool,BoxZoomTool,ResetTool, WheelZoomTool,Legend, LegendItem, ColumnDataSource, CDSView, IndexFilter
+from bokeh.models.widgets import PreText, Select
 from pandas.io.json import json_normalize
 from copy import deepcopy
 from sys import exit
+import math
 
 class Geography(object):
     def __init__(self,fs_dict,gs_dict,df_dict,select_recension=None):
@@ -222,10 +224,232 @@ def Js2Geodf(df):
     return(dfout)
 
 
+## Definitions
+# Make figures for recensions:
+
+def makeScale(df, recension):
+    '''
+    df: DataFrame, which contain the cartographical information
+    recension: str, eigher Xi or Omega
+    '''
+    
+    scale = 50
+    offsetX = 0.5
+    if  math.ceil(np.max(np.array(df["latitude_" + recension]))) == np.max(np.array(df["latitude_" + recension])):
+        offsetYup = 0.5
+    else:
+        offsetYup = 0
+    if math.floor(np.min(np.array(df["latitude_" + recension]))) == np.min(np.array(df["latitude_" + recension])):
+        offsetYdown = 0.5
+    else:
+        offsetYdown = 0
+        
+    maxLat = math.ceil(np.max(np.array(df["latitude_" + recension])))+offsetYup
+    maxLong = math.ceil(np.max(np.array(df["longitude_" + recension])))+offsetX
+    minLat = math.floor(np.min(np.array(df["latitude_" + recension])))-offsetYdown
+    minLong = math.floor(np.min(np.array(df["longitude_" + recension])))-offsetX
+    diffLat = int(maxLat-minLat)
+    diffLong = int(maxLong-minLong)
+    scales = [minLat, maxLat, minLong, maxLong, diffLat, diffLong, scale]
+    return scales
+
+def compareScale(scaleXi, scaleOmega):
+    '''
+    scaleXi: list of floats and ints, list containing for Xi recension [minimum latitude, maximum latitude, minimum longitude, maximum longitude, maximum latitude - minimum latitude, maximum longitude - minimum longitude, scale]
+    scaleOmega: list of floats and ints, list containing for Omega recension [minimum latitude, maximum latitude, minimum longitude, maximum longitude, maximum latitude - minimum latitude, maximum longitude - minimum longitude, scale]
+    '''
+    
+    scale = []
+    if scaleXi[0] < scaleOmega[0]:
+        scale.append(scaleXi[0])
+    else:
+        scale.append(scaleOmega[0])
+        
+    if scaleXi[1] > scaleOmega[1]:
+        scale.append(scaleXi[1])
+    else:
+        scale.append(scaleOmega[1])
+        
+    if scaleXi[2] < scaleOmega[2]:
+        scale.append(scaleXi[2])
+    else:
+        scale.append(scaleOmega[2])
+        
+    if scaleXi[3] > scaleOmega[3]:
+        scale.append(scaleXi[3])
+    else:
+        scale.append(scaleOmega[3])
+        
+    if scaleXi[4] > scaleOmega[4]:
+        scale.append(scaleXi[4])
+    else:
+        scale.append(scaleOmega[4])
+        
+    if scaleXi[5] > scaleOmega[5]:
+        scale.append(scaleXi[5])
+    else:
+        scale.append(scaleOmega[5])
+        
+    scale.append(scaleOmega[6])
+    return scale
+
+def makeRecensions(df, title, recension, ID1, ID2, markColor, drawLine, scales):
+    '''
+    df: DataFrame, which contain the cartographical information
+    title: str, giving the title of the plot
+    recension: str, eigher Xi or Omega
+    ID1: str or False, use False if no first ID is provided, str provides the the ID of the dataset
+    ID2: str or False, use False if no second ID is provided, if the first ID is False, the second must be also False, str provides the the ID of the dataset
+    markColor: ColorSpec, determine the color of the annulus mark
+    drawLine: boolean, if True, a line is drawn to connect the points, if False no line is drawn
+    '''
+    
+    hover = HoverTool(names=["point"])
+    source = ColumnDataSource(data=dict(x=list(df["longitude_" + recension]), y=list(df["latitude_" + recension]), desc=list(df["toponym"])),)
+    hover.tooltips = [("toponym", "@desc")]
+    
+    minLat = scales[0]
+    maxLat = scales[1]
+    minLong = scales[2]
+    maxLong = scales[3]
+    diffLat = scales[4]
+    diffLong = scales[5]
+    scale = scales[6]
+    
+    loc_var = df.groupby('diff').get_group('var')
+    loc_id = df.groupby('diff').get_group('id')
+    
+    n = figure(title=title, width=diffLong*scale*3, height=diffLat*scale*4, x_range=(minLong, maxLong), y_range=(minLat, maxLat), tools=[hover,'pan', 'wheel_zoom'])
+    n.xaxis.axis_label = 'Longitude [°]'
+    n.yaxis.axis_label = 'Latitude [°]'
+    if drawLine:
+        n.line(np.array(df["longitude_" + recension]),np.array(df["latitude_" + recension]),line_alpha=0.6,line_color='black')
+    n.circle('x','y',fill_color='black',size=6,fill_alpha=0.4,line_color='black', source=source, name="point")
+    if not markColor:
+        pass
+    else:
+        if not (ID1 or ID2):
+            n.annulus(loc_var["longitude_" + recension], loc_var["latitude_" + recension], fill_color=markColor, inner_radius=0.04, outer_radius=0.06,fill_alpha=0.7,line_color='black',line_alpha=0)
+        if not ID2 and ID1:
+            n.annulus(df.loc[ID1, "longitude_" + recension], df.loc[ID1, "latitude_" + recension], fill_color=markColor, inner_radius=0.04, outer_radius=0.06,fill_alpha=0.7,line_color='black',line_alpha=0)
+        if (ID1 and ID2):
+            n.annulus(df.loc[ID1:ID2, "longitude_" + recension],df.loc[ID1:ID2,"latitude_" + recension],fill_color=markColor,inner_radius=0.04, outer_radius=0.06,fill_alpha=0.9,line_color='black',line_alpha=0)
+    return n
+
+def makeComparison(df, title, Compare1, Compare2, drawLine):
+    '''
+    df: DataFrame, which contain the cartographical information
+    title: str, giving the title of the plot
+    Compare1: str, recension to be compared
+    Compare2: str, recension to be compared
+    drawLine: boolean, if True, a line is drawn to connect the points, if False no line is drawn
+    '''
+    
+    loc_var = df.groupby('diff').get_group('var')
+    loc_id = df.groupby('diff').get_group('id')
+    
+    scale = 50
+    offsetX = 0.5
+    if np.max(np.array(df["latitude_" + Compare1])) >= np.max(np.array(df["latitude_" + Compare2])):
+        if  math.ceil(np.max(np.array(df["latitude_" + Compare1]))) == np.max(np.array(df["latitude_" + Compare1])):
+            offsetYup = 0.5
+        else:
+            offsetYup = 0
+        if math.floor(np.min(np.array(df["latitude_" + Compare1]))) == np.min(np.array(df["latitude_" + Compare1])):
+            offsetYdown = 0.5
+        else:
+            offsetYdown = 0
+    else:
+        if  math.ceil(np.max(np.array(df["latitude_" + Compare2]))) == np.max(np.array(df["latitude_" + Compare2])):
+            offsetYup = 0.5
+        else:
+            offsetYup = 0
+        if math.floor(np.min(np.array(df["latitude_" + Compare2]))) == np.min(np.array(df["latitude_" + Compare2])):
+            offsetYdown = 0.5
+        else:
+            offsetYdown = 0
+    
+    if np.max(np.array(df["latitude_" + Compare1])) >= np.max(np.array(df["latitude_" + Compare2])):
+        maxLat = math.ceil(np.max(np.array(df["latitude_" + Compare1])))+offsetYup
+        maxLong = math.ceil(np.max(np.array(df["longitude_" + Compare1])))+offsetX
+        minLat = math.floor(np.min(np.array(df["latitude_" + Compare1])))-offsetYdown
+        minLong = math.floor(np.min(np.array(df["longitude_" + Compare1])))-offsetX
+    else:
+        maxLat = math.ceil(np.max(np.array(df["latitude_" + Compare2])))+offsetYup
+        maxLong = math.ceil(np.max(np.array(df["longitude_" + Compare2])))+offsetX
+        minLat = math.floor(np.min(np.array(df["latitude_" + Compare2])))-offsetYdown
+        minLong = math.floor(np.min(np.array(df["longitude_" + Compare2])))-offsetX
+    diffLat = int(maxLat-minLat)
+    diffLong = int(maxLong-minLong)
+
+    r = figure(title=title, width=diffLong*scale*3, height=diffLat*scale*4, x_range=(minLong, maxLong), y_range=(minLat, maxLat))
+    r.xaxis.axis_label = 'Longitude [°]'
+    r.yaxis.axis_label = 'Latitude [°]'
+    r.circle(np.array(df["longitude_" + Compare1]),np.array(df["latitude_" + Compare1]),fill_color='red',size=6,fill_alpha=0.4,line_color='darkred')
+    r.circle(np.array(df["longitude_" + Compare2]),np.array(df["latitude_" + Compare2]),fill_color='blue',size=6,fill_alpha=0.4,line_color='darkblue')
+    r.circle(np.array(loc_id["longitude_" + Compare2]),np.array(loc_id["latitude_" + Compare2]),fill_color='grey',size=6.2,fill_alpha=1,line_color='grey')
+    if drawLine:
+        r.segment(x0=df["longitude_" + Compare1], y0=df["latitude_" + Compare1], x1=df["longitude_" + Compare2],
+                  y1=df["latitude_" + Compare2], color="grey", line_width=1)
+    return r
 
 
+# If the table have to show only parameters of one ID, the second one have to be None.
+def makeTable(df, width, ID1, ID2):
+    '''
+    df: DataFrame, which contain the cartographical information
+    width: float/int, giving the width of the table
+    ID1: str, str provides the the ID of the first dataset
+    ID2: str or None, use None if no second ID is provided, str provides the the ID of the second dataset
+    '''
+    
+    table = PreText(text="", width=width)
+    if not ID2:
+        table.text = str(df.loc[[ID1]].T)
+    else:
+        table.text = str(df.loc[ID1:ID2].T)
+    return table
 
 
+# If the table have to show only parameters of one ID, the second one have to be None.
+def makeDf(peoples):
+    '''
+    df_Omega: DataFrame, which contain the cartographical information of the Omega recension
+    df_Xi: DataFrame, which contain the cartographical information of the Xi recension
+    peoples: str, people of which the localisation is examine
+    ID2: str or None, use None if no second ID is provided, str provides the the ID of the second dataset
+    '''
+    
+    Omega = pd.read_json('./data/OmegaStructure.json',encoding="utf8")
+    Xi = pd.read_json('./data/XiStructure.json',encoding="utf8")
+    
+    dfOmega=Js2Geodf(Omega["chapters"][0])
+    dfXi=Js2Geodf(Xi["chapters"][0])
+    
+    # We transpose the Greek numeral system used by Ptolemy for the coordiantes into a modern format, using decimal. We create two columns for each dataframe: one for the longitude, one for the latitude, thanks to the functions reformatCoord and reformatIntFrac.
+    
+    ## Omega
+    dfTemp = dfOmega.copy()
+    dfTemp['longitude_Omega'] = dfOmega.apply(lambda row: reformatCoord(row,'long','coord'),axis=1).apply(reformatIntFrac)
+    dfTemp['latitude_Omega'] = dfOmega.apply(lambda row: reformatCoord(row,'lat','coord'),axis=1).apply(reformatIntFrac)
+    
+    ## Xi
+    dfTempX = dfXi.copy()
+    dfTempX['longitude_Xi'] = dfXi.apply(lambda row: reformatCoord(row,'long','coord'),axis=1).apply(reformatIntFrac)
+    dfTempX['latitude_Xi'] = dfXi.apply(lambda row: reformatCoord(row,'lat','coord'),axis=1).apply(reformatIntFrac)
+    
+    # From the dataframes we extract the list of the localities belonging to certain peoples.
+    
+    LocXi = dfTempX[dfTempX.people == peoples]
+    LocOmega = dfTemp[dfTemp.people == peoples]
+    
+    # We merge the two recensions in one single dataframe.
+    
+    LocXiN = LocXi[['ID','longitude_Xi','latitude_Xi']]
+    dfLoc = pd.merge(LocOmega, LocXiN, on='ID')
+    dfLoc['diff'] = np.where((dfLoc['longitude_Omega']==dfLoc['longitude_Xi']) & (dfLoc['latitude_Omega']==dfLoc['latitude_Xi']),'id','var')
+    dfLoc = dfLoc[['ID','type_sec','people','type','category','toponym','longitude_Xi','latitude_Xi','longitude_Omega','latitude_Omega','diff']].set_index('ID')
+    return dfLoc
     
         
         
