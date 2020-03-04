@@ -393,6 +393,26 @@ def makeComparison(df, title, Compare1, Compare2, drawLine):
                   y1=df["latitude_" + Compare2], color="grey", line_width=1)
     return r
 
+def makeRecesionsCoast(dfCoast, dfRecension, dfVettones, regionCoord, title, recension):
+    '''
+    dfCoast: DataFrame, which contain the cartographical information for the coast in question
+    dfRecension: DataFrame, which contain the cartographical information for the whole recension in question
+    dfVettones: DataFrame, which contain the cartographical information only for the region/people in question
+    regionCoord: list of six lists with four floats each, containing the points in order to draw the enclosing line of the region correctly
+    title: str, giving the title of the plot
+    recension: str, eigher Xi or Omega
+    '''
+    
+    p = figure(title=title, x_axis_label='', y_axis_label='',plot_width=500, plot_height=500,x_range=(4.5,10.5), y_range=(40,43))
+    p.line(x=dfCoast['longitude_' + recension],y=dfCoast['latitude_' + recension],line_alpha=0.8, color='grey')
+    p.line(regionCoord[0], regionCoord[1], line_alpha=0.8, color='grey')
+    p.line(regionCoord[2], regionCoord[3], line_alpha=0.8, color='grey')
+    p.line(regionCoord[4], regionCoord[5], line_alpha=0.8, color='grey')
+    p.circle(dfRecension['longitude_' + recension],dfRecension['latitude_' + recension],size=5, fill_color='grey', fill_alpha=0.5, line_color='grey',line_alpha=0)
+    p.line(dfVettones['longitude_' + recension],dfVettones['latitude_' + recension], line_color='black',line_alpha=0.5)
+    p.circle(x=dfVettones["longitude_" + recension],y=dfVettones["latitude_" + recension],color='black',size=5.5)
+    p.annulus(dfVettones.loc['2.05.09.04',"longitude_" + recension],dfVettones.loc['2.05.09.04',"latitude_" + recension], fill_color='orange',inner_radius=0.06, outer_radius=0.1,fill_alpha=0.7,line_color='orange',line_alpha=0)
+    return p
 
 # If the table have to show only parameters of one ID, the second one have to be None.
 def makeTable(df, width, ID1, ID2):
