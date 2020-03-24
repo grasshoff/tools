@@ -471,6 +471,51 @@ def makeDf(peoples):
     dfLoc = dfLoc[['ID','type_sec','people','type','category','toponym','longitude_Xi','latitude_Xi','longitude_Omega','latitude_Omega','diff']].set_index('ID')
     return dfLoc
     
+def makeRecensionsMultiPeople(df, title, recension, ID1, ID2, markColor, drawLine, scales, multipeople):
+    '''
+    df: DataFrames, which contain the cartographical information of all peoples
+    title: str, giving the title of the plot
+    recension: str, eigher Xi or Omega
+    ID1: str or False, use False if no first ID is provided, str provides the the ID of the dataset
+    ID2: str or False, use False if no second ID is provided, if the first ID is False, the second must be also False, str provides the the ID of the dataset
+    markColor: ColorSpec or False, determine the color of the annulus mark or if False draw no annulus
+    drawLine: boolean, if True, a line is drawn to connect the points, if False no line is drawn
+    multipeople: False or dict, if False the data only for one people is supposed to drawn, if multiple people are supposed to be drawn provide a dict assigning peoples to the colors to distinguish th peoples 
+    '''
+    
+    minLat = scales[0]
+    maxLat = scales[1]
+    minLong = scales[2]
+    maxLong = scales[3]
+    diffLat = scales[4]
+    diffLong = scales[5]
+    scale = scales[6]
+    
+    hover = HoverTool(names=["point"])
+    hover.tooltips = [("toponym", "@desc")]
+    
+    n = figure(title=title, width=diffLong*scale*3, height=diffLat*scale*4, x_range=(minLong, maxLong), y_range=(minLat, maxLat), tools=[hover,'pan', 'wheel_zoom'])
+    n.xaxis.axis_label = 'Longitude [°]'
+    n.yaxis.axis_label = 'Latitude [°]'
+    
+    loc_var = df.groupby('diff').get_group('var')
+    loc_id = df.groupby('diff').get_group('id')
+    
+    for people in list(multipeople.keys()):
+        source = ColumnDataSource(data=dict(x=list(df[df['people'] == people]["longitude_" + recension]), y=list(df[df['people'] == people]["latitude_" + recension]), desc=list(df[df['people'] == people]["toponym"])),)
+        if drawLine:
+            n.line(np.array(df[df['people'] == people]["longitude_" + recension]),np.array(df[df['people'] == people]["latitude_" + recension]),line_alpha=0.6,line_color='black')
+        n.circle('x','y',fill_color=multipeople[people],size=6,fill_alpha=0.4,line_color=multipeople[people], source=source, name="point")
+    if not markColor:
+        pass
+    else:
+        if not (ID1 or ID2):
+            n.annulus(loc_var["longitude_" + recension], loc_var["latitude_" + recension], fill_color=markColor, inner_radius=0.04, outer_radius=0.06,fill_alpha=0.5,line_color=markColor,line_alpha=0)
+        if not ID2 and ID1:
+            n.annulus(df.loc[ID1, "longitude_" + recension], df.loc[ID1, "latitude_" + recension], fill_color=markColor, inner_radius=0.04, outer_radius=0.06,fill_alpha=0.5,line_color=markColor,line_alpha=0)
+        if (ID1 and ID2):
+            n.annulus(df.loc[ID1:ID2, "longitude_" + recension],df.loc[ID1:ID2,"latitude_" + recension],fill_color=markColor,inner_radius=0.04, outer_radius=0.06,fill_alpha=0.5,line_color=markColor,line_alpha=0)
+    return n
         
         
 
