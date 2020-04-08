@@ -10,6 +10,8 @@ from pandas.io.json import json_normalize
 from copy import deepcopy
 from sys import exit
 import math
+import bokeh.models as bkm
+import bokeh.plotting as bkp
 
 class Geography(object):
     def __init__(self,fs_dict,gs_dict,df_dict,select_recension=None):
@@ -337,16 +339,9 @@ def makeRecensions(df, title, recension, ID1, ID2, markColor, drawLine, scales):
     return n
 
 def makeComparison(df, title, Compare1, Compare2, drawLine):
-    '''
-    df: DataFrame, which contain the cartographical information
-    title: str, giving the title of the plot
-    Compare1: str, recension to be compared
-    Compare2: str, recension to be compared
-    drawLine: boolean, if True, a line is drawn to connect the points, if False no line is drawn
-    '''
-    
-    loc_var = df.groupby('diff').get_group('var')
-    loc_id = df.groupby('diff').get_group('id')
+
+    df["longitude_id"] = [df["longitude_" + Compare1][i] if df["longitude_" + Compare1][i] == df["longitude_" + Compare2][i] else np.nan for i in range(len(df))]
+    df["latitude_id"] = [df["latitude_" + Compare1][i] if df["latitude_" + Compare1][i] == df["latitude_" + Compare2][i] else np.nan for i in range(len(df))]
     
     scale = 50
     offsetX = 0.5
@@ -382,15 +377,31 @@ def makeComparison(df, title, Compare1, Compare2, drawLine):
     diffLat = int(maxLat-minLat)
     diffLong = int(maxLong-minLong)
 
-    r = figure(title=title, width=diffLong*scale*3, height=diffLat*scale*4, x_range=(minLong, maxLong), y_range=(minLat, maxLat))
+    source = bkm.ColumnDataSource(data=df)
+    r = bkp.figure(title=title, width=diffLong*scale*3, height=diffLat*scale*4, x_range=(minLong, maxLong), y_range=(minLat, maxLat), tools=['pan', 'wheel_zoom'])
     r.xaxis.axis_label = 'Longitude [°]'
     r.yaxis.axis_label = 'Latitude [°]'
-    r.circle(np.array(df["longitude_" + Compare1]),np.array(df["latitude_" + Compare1]),fill_color='red',size=6,fill_alpha=0.4,line_color='darkred')
-    r.circle(np.array(df["longitude_" + Compare2]),np.array(df["latitude_" + Compare2]),fill_color='blue',size=6,fill_alpha=0.4,line_color='darkblue')
-    r.circle(np.array(loc_id["longitude_" + Compare2]),np.array(loc_id["latitude_" + Compare2]),fill_color='grey',size=6.2,fill_alpha=1,line_color='grey')
+    g1 = bkm.Circle(x="longitude_" + Compare1, y="latitude_" + Compare1,fill_color='red',size=6,fill_alpha=0.4,line_color='darkred')
+    g1_r = r.add_glyph(source_or_glyph=source, glyph=g1)
+    g1_hover = bkm.HoverTool(renderers=[g1_r],
+                             tooltips=[("toponym", "@toponym")])
+
+    g2 = bkm.Circle(x="longitude_" + Compare2, y="latitude_" + Compare2,fill_color='blue',size=6,fill_alpha=0.4,line_color='darkblue')
+    g2_r = r.add_glyph(source_or_glyph=source, glyph=g2)
+    g2_hover = bkm.HoverTool(renderers=[g2_r],
+                             tooltips=[("toponym", "@toponym")])
+
+    g3 = bkm.Circle(x="longitude_" + "id", y="latitude_" + "id",fill_color='grey',size=6,fill_alpha=0.4,line_color='grey')
+    g3_r = r.add_glyph(source_or_glyph=source, glyph=g3)
+    g3_hover = bkm.HoverTool(renderers=[g3_r],
+                            tooltips=[("toponym", "@toponym")])
+    
     if drawLine:
-        r.segment(x0=df["longitude_" + Compare1], y0=df["latitude_" + Compare1], x1=df["longitude_" + Compare2],
-                  y1=df["latitude_" + Compare2], color="grey", line_width=1)
+        g_l = bkm.Segment(x0="longitude_" + Compare1, y0="latitude_" + Compare1, 
+                    x1="longitude_" + Compare2, y1="latitude_" + Compare2, line_color="grey", line_width=1)
+        r.add_glyph(source_or_glyph=source, glyph=g_l)
+    r.add_tools(g1_hover, g2_hover)
+    df.drop(["longitude_id", "latitude_id"], axis=1, inplace = True)
     return r
 
 def makeRecesionsCoast(dfCoast, dfRecension, dfVettones, regionCoord, title, recension):
