@@ -528,7 +528,14 @@ def makeRecensionsMultiPeople(df, title, recension, ID1, ID2, markColor, drawLin
             n.annulus(df.loc[ID1:ID2, "longitude_" + recension],df.loc[ID1:ID2,"latitude_" + recension],fill_color=markColor,inner_radius=0.04, outer_radius=0.06,fill_alpha=0.5,line_color=markColor,line_alpha=0)
     return n
         
-        
+def table2latex(df, datapoints, formatting):
+    '''
+    df: DataFrame, which contains the cartographical information of all peoples
+    datapoints: list of str, which contain the IDs of the datapoints to show 
+    formatting: str, can only contain "l" (left aligned), "c" (centered) and "r" (right aligned), number of characters in formatting must be equal to length of datapoints
+    '''
+    
+    df.loc[datapoints].T.to_latex('_'.join(datapoints) + '.tex', column_format=formatting)        
 
 
 
