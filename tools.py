@@ -537,7 +537,173 @@ def table2latex(df, datapoints, formatting):
     
     df.loc[datapoints].T.to_latex('_'.join(datapoints) + '.tex', column_format=formatting)        
 
-
-
-
+def makeDfOmLoc():
+    '''
+    dfOmega: DataFrame, which contains the cartographical information of the Omega recension
+    dfTemp: Dataframe, which contains the information of the Omega recension plus the coordinates in decimal 
+    '''
     
+    Omega = pd.read_json('./data/OmegaStructure.json',encoding="utf8")
+    dfOmega=Js2Geodf(Omega["chapters"][0])
+    dfTemp = dfOmega.copy()
+    dfTemp['longitude_Omega'] = dfOmega.apply(lambda row: reformatCoord(row,'long','coord'),axis=1).apply(reformatIntFrac)
+    dfTemp['latitude_Omega'] = dfOmega.apply(lambda row: reformatCoord(row,'lat','coord'),axis=1).apply(reformatIntFrac)
+
+    dfTemp = dfTemp[dfTemp.latitude_Omega > 0]
+    return dfTemp
+
+def makeDfXiLoc():
+    '''
+    dfXi: DataFrame, which contain the cartographical information of the Xi recension
+    dfTempX: Dataframe, which contains the information of the Xi recension plus the coordinates in decimal 
+    '''
+    
+    Xi = pd.read_json('./data/XiStructure.json',encoding="utf8")
+    dfXi=Js2Geodf(Xi["chapters"][0])
+    dfTempX = dfXi.copy()
+    dfTempX['longitude_Xi'] = dfXi.apply(lambda row: reformatCoord(row,'long','coord'),axis=1).apply(reformatIntFrac)
+    dfTempX['latitude_Xi'] = dfXi.apply(lambda row: reformatCoord(row,'lat','coord'),axis=1).apply(reformatIntFrac)
+    dfTempX = dfTempX[dfTempX.latitude_Xi > 0]
+
+    return dfTempX
+
+def makeCoast(df, recension):
+    '''
+    df: DataFrames, which contain Ptolemy's Iberian localities (i.e. with places with coordinates)
+    '''
+    a = df[(df.type_sec == 'coast section') & (df.type == 'locality') & df.category.apply(lambda row: row not in ["boundary","river path","river source"])][['ID','toponym','longitude_'+recension,'latitude_'+recension]]
+    bareia = df[df.ID == "2.04.08.08"][['ID','toponym','longitude_'+recension,'latitude_'+recension]]
+    nearbareia = df[df.ID == "2.06.12.03"][['ID','toponym','longitude_'+recension,'latitude_'+recension]]
+    pointPy = pd.DataFrame({'ID':"2.07.04.04",
+                        'toponym':"καὶ τῆς Ναρβωνησίας μέρει μέχρι τοῦ πρὸς τῇ Πυρήνῃ πέρατος, οὗ ἡ θέσις ἐπέχει μοίρας",
+                        'longitude_'+recension:[19], 
+                        'latitude_'+recension:[43+(1/6)]})
+    pointPy2 = df[df.ID == "2.06.11.03"][['ID','toponym','longitude_'+recension,'latitude_'+recension]]
+    pointPy3 = a[a.ID == "2.06.10.03"][['ID','toponym','longitude_'+recension,'latitude_'+recension]]
+    
+    if recension == 'Omega':
+        dfCoast = pd.concat([a[38:69].sort_index(ascending=False),a[28:37].sort_index(ascending=False),a[0:2].sort_index(ascending=True),a[3:28].sort_index(ascending=True),bareia,nearbareia,a[69:].sort_index(ascending=True),pointPy,pointPy2,pointPy3]).set_index("ID")
+    if recension == 'Xi':
+        dfCoast = pd.concat([a[36:67].sort_index(ascending=False),a[26:35].sort_index(ascending=False),a[0:2].sort_index(ascending=True),a[3:26].sort_index(ascending=True),bareia,nearbareia,a[69:].sort_index(ascending=True),pointPy,pointPy2,pointPy3]).set_index("ID") 
+
+    return dfCoast
+    
+def makeIberianPeninsula(dfCities, dfCoast, recension, color):
+    '''
+    dfCities: DataFrame, which contain Ptolemy's Iberian localities (i.e. with places with coordinates)
+    dfCoast: DataFrame, which contain Ptolemy's Iberian localities of the coast line of the Iberian peninsula (i.e. with places with coordinates)
+    recension: str, eigher Xi or Omega
+    color: ColorSpec, determine the color of the circles marking Ptolemy's location of the cities
+    '''
+
+    hover = HoverTool(names=["point"])
+    hover.tooltips = [("ID", "@idN"),("ancient toponym", "@desc"),("modern location","@mod")]
+    source = ColumnDataSource(data=dict(x=list(dfCities["longitude_" + recension]), y=list(dfCities["latitude_" + recension]), x_mod=list(dfCities["longitude_n"]), y_mod=list(dfCities["latitude_"]),
+                           desc=list(dfCities["ancient_toponym"]), mod=list(dfCities["modern_location"]), idN =list(dfCities.index)))
+ 
+    f = figure(title="Comparison between Ptolemy's coordinates ({} recension, red) and their modern locations (green)".format(recension),width=990, height=1188, x_range=(2, 21), y_range=(35.5, 50.5), tools=[hover,'pan', 'wheel_zoom','reset'])
+    f.xaxis.axis_label = 'Longitude [°]'
+    f.yaxis.axis_label = 'Latitude [°]'
+
+    # Drawing the coasts and the Pyrenees of Ptolemy's map
+    dfCoastLine = makeCoast(dfCoast, recension)
+    f.line(x=dfCoastLine['longitude_' + recension],y=dfCoastLine['latitude_' + recension], line_alpha=0.5, color=color)
+
+    # Ptolemy's coordinates 
+    f.circle('x','y',fill_color=color,size=4,fill_alpha=0.4,line_color='dark' + color,source=source, name="point")
+
+    # Modern coordinates with Calpe/Gibraltar as prime meridian
+    f.circle('x_mod','y_mod',fill_color='green',size=4,fill_alpha=0.4,line_color='darkgreen',source=source, name="point")
+
+    # Connecting the two datasets
+    f.segment(x0=dfCities["longitude_" + recension], y0=dfCities["latitude_" + recension], x1=dfCities["longitude_n"],y1=dfCities["latitude_"], color="grey", line_width=1)
+
+    return f
+
+def makeSpatialOmega(df, title):
+    '''
+    df: DataFrames, which contain the localities of the Omega recension
+    title: str, giving the title of the plot
+    '''
+    
+    hover = HoverTool(names=["point"])
+    hover.tooltips = [("ID", "@idN"),
+                    ("toponym", "@desc"),
+                    ("people", "@ppl")]
+    
+    n = figure(title=title, width=990, height=792, x_range=(2, 21), y_range=(35.5, 47), tools=[hover,'pan', 'wheel_zoom','reset'])
+    n.xaxis.axis_label = 'Longitude [°]'
+    n.yaxis.axis_label = 'Latitude [°]'
+    
+    # define DF with only inland localities attributed to a people from "df"
+    i = df[df['type_sec'] != "coast section"]
+    i = i[i.type_sec != "borders description"]
+    i = i[i['people'] != ""]
+    
+    # plot all the localities of the peninsula (from "df")
+    source2 = ColumnDataSource(data=dict(x=list(df["longitude_Omega"]), y=list(df["latitude_Omega"]), desc=list(df["toponym"]), ppl=list(df["people"]), idN =list(df["ID"])))
+    n.circle('x','y', size = 5, fill_color='blue', fill_alpha=0.7, line_color='blue',line_alpha=0, source=source2, name="point")
+
+    # plot the coasts (from "df")
+    a = df[(df.type_sec == 'coast section') & (df.type == 'locality') & df.category.apply(lambda row: row not in ["boundary","river path","river source"])][['ID','toponym','longitude_Omega','latitude_Omega']]
+    bareia = df[df.ID == "2.04.08.08"][['ID','toponym','longitude_Omega','latitude_Omega']]
+    nearbareia = df[df.ID == "2.06.12.03"][['ID','toponym','longitude_Omega','latitude_Omega']]
+    pointPy = pd.DataFrame({'ID':"2.07.04.04",
+                        'toponym':"καὶ τῆς Ναρβωνησίας μέρει μέχρι τοῦ πρὸς τῇ Πυρήνῃ πέρατος, οὗ ἡ θέσις ἐπέχει μοίρας",
+                        'longitude_Omega':[19], 
+                        'latitude_Omega':[43+(1/6)]})
+    pointPy2 = df[df.ID == "2.06.11.03"][['ID','toponym','longitude_Omega','latitude_Omega']]
+    pointPy3 = a[a.ID == "2.06.10.03"][['ID','toponym','longitude_Omega','latitude_Omega']]
+    dfOmCoast = pd.concat([a[38:69].sort_index(ascending=False),a[28:37].sort_index(ascending=False),a[0:2].sort_index(ascending=True),a[3:28].sort_index(ascending=True),bareia,nearbareia,a[69:].sort_index(ascending=True),pointPy,pointPy2,pointPy3]).set_index("ID")
+    n.line(x=dfOmCoast['longitude_Omega'],y=dfOmCoast['latitude_Omega'],line_alpha=0.8, color='grey')
+
+    # plot the groups of Iberian people (from "i")
+    for people in list(i.people):
+        source = ColumnDataSource(data=dict(x=list(df[df['people'] == people]["longitude_Omega"]), y=list(df[df['people'] == people]["latitude_Omega"]), desc=list(df[df['people'] == people]["toponym"])),)
+        n.line(np.array(i[i['people'] == people]["longitude_Omega"]),np.array(i[i['people'] == people]["latitude_Omega"]),line_alpha=0.8,line_color='grey')
+
+    return n
+
+def makeSpatialXi(df, title):
+    '''
+    df: DataFrames, which contain the localities of the Omega recension
+    title: str, giving the title of the plot
+    '''
+    
+    hover = HoverTool(names=["point"])
+    hover.tooltips = [("ID", "@idN"),
+                      ("toponym", "@desc"),
+                      ("people", "@ppl")]
+    
+    n = figure(title=title, width=990, height=792, x_range=(2, 21), y_range=(35.5, 47), tools=[hover,'pan', 'wheel_zoom','reset'])
+    n.xaxis.axis_label = 'Longitude [°]'
+    n.yaxis.axis_label = 'Latitude [°]'
+    
+    # define DF with only inland localities attributed to a people from "df"
+    i = df[df['type_sec'] != "coast section"]
+    i = i[i.type_sec != "borders description"]
+    i = i[i['people'] != ""]
+    
+    # plot all the localities of the peninsula (from "df")
+    source2 = ColumnDataSource(data=dict(x=list(df["longitude_Xi"]), y=list(df["latitude_Xi"]), desc=list(df["toponym"]), ppl=list(df["people"]), idN =list(df["ID"])))
+    n.circle('x','y', size = 5, fill_color='red', fill_alpha=0.7, line_color='blue',line_alpha=0, source=source2, name="point")
+
+    # plot the coasts
+    a = df[(df.type_sec == 'coast section') & (df.type == 'locality') & df.category.apply(lambda row: row not in ["boundary","river path","river source"])][['ID','toponym','longitude_Xi','latitude_Xi']]
+    bareia = df[df.ID == "2.04.08.08"][['ID','toponym','longitude_Xi','latitude_Xi']]
+    nearbareia = df[df.ID == "2.06.12.03"][['ID','toponym','longitude_Xi','latitude_Xi']]
+    pointPy = pd.DataFrame({'ID':"2.07.04.04",
+                        'toponym':"καὶ τῆς Ναρβωνησίας μέρει μέχρι τοῦ πρὸς τῇ Πυρήνῃ πέρατος, οὗ ἡ θέσις ἐπέχει μοίρας",
+                        'longitude_Xi':[19], 
+                        'latitude_Xi':[43+(1/6)]})
+    pointPy2 = df[df.ID == "2.06.11.03"][['ID','toponym','longitude_Xi','latitude_Xi']]
+    pointPy3 = a[a.ID == "2.06.10.03"][['ID','toponym','longitude_Xi','latitude_Xi']]
+    dfXiCoast = pd.concat([a[36:67].sort_index(ascending=False),a[26:35].sort_index(ascending=False),a[0:2].sort_index(ascending=True),a[3:26].sort_index(ascending=True),bareia,nearbareia,a[69:].sort_index(ascending=True),pointPy,pointPy2,pointPy3]).set_index("ID") 
+    n.line(x=dfXiCoast['longitude_Xi'],y=dfXiCoast['latitude_Xi'],line_alpha=0.8, color='grey')
+
+    # plot the groups of Iberian people (from i)
+    for people in list(i.people):
+        source = ColumnDataSource(data=dict(x=list(df[df['people'] == people]["longitude_Xi"]), y=list(df[df['people'] == people]["latitude_Xi"]), desc=list(df[df['people'] == people]["toponym"])),)
+        n.line(np.array(i[i['people'] == people]["longitude_Xi"]),np.array(i[i['people'] == people]["latitude_Xi"]),line_alpha=0.8,line_color='grey')
+
+    return n
