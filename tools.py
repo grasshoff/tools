@@ -698,7 +698,7 @@ def makeSpatialXi(df, title):
                         'latitude_Xi':[43+(1/6)]})
     pointPy2 = df[df.ID == "2.06.11.03"][['ID','toponym','longitude_Xi','latitude_Xi']]
     pointPy3 = a[a.ID == "2.06.10.03"][['ID','toponym','longitude_Xi','latitude_Xi']]
-    dfXiCoast = pd.concat([a[36:67].sort_index(ascending=False),a[26:35].sort_index(ascending=False),a[0:2].sort_index(ascending=True),a[3:26].sort_index(ascending=True),bareia,nearbareia,a[69:].sort_index(ascending=True),pointPy,pointPy2,pointPy3]).set_index("ID") 
+    dfXiCoast = pd.concat([a[36:67].sort_index(ascending=False),a[26:35].sort_index(ascending=False),a[0:2].sort_index(ascending=True),a[3:26].sort_index(ascending=True),bareia,nearbareia,a[67:].sort_index(ascending=True),pointPy,pointPy2,pointPy3]).set_index("ID") 
     n.line(x=dfXiCoast['longitude_Xi'],y=dfXiCoast['latitude_Xi'],line_alpha=0.8, color='grey')
 
     # plot the groups of Iberian people (from i)
